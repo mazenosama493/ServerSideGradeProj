@@ -38,7 +38,7 @@ DEFAULT_HTTP_HEADERS = {
 
 
 class ChatBotView(APIView):
-    parser_classes = [MultiPartParser, JSONParser, FormParser]
+    parser_classes = (MultiPartParser, JSONParser, FormParser)
 
     def __del__(self):
         """Clean up any temporary files when the view is destroyed."""
@@ -52,6 +52,15 @@ class ChatBotView(APIView):
                         pass  # Ignore errors on cleanup
         except:
             pass  # We don't want cleanup to cause issues
+
+    def _get_relevant_history(self):
+        # Get last 10 interactions to maintain context
+        history = ChatHistory.objects.order_by('-timestamp')[:10]
+        context = []
+        for chat in reversed(history):  # Reverse to get chronological order
+            context.append(f"User: {chat.prompt}")
+            context.append(f"Assistant: {chat.response}")
+        return "\n".join(context)
 
     def prepare_image(self, image_data):
         """Convert image data to base64 for AI processing."""
@@ -67,35 +76,23 @@ class ChatBotView(APIView):
 
     def post(self, request):
         try:
-            # Get the prompt from the request
-            prompt = request.data.get("prompt", "")
+            prompt = request.data.get('prompt', '')
             if not prompt:
-                return Response({"error": "Prompt is required"}, status=400)
+                return Response({"error": "No prompt provided"}, status=400)
 
-            # Process image if it exists
-            image_file = request.FILES.get("image")
+            image_file = None
             img_base64 = None
 
-            if image_file:
+            # Handle image upload if present
+            if 'image' in request.FILES:
                 try:
-                    # Read image data
-                    image_data = image_file.read()
-
-                    # Create a temporary file with a proper name
-                    image_name = f"{uuid.uuid4()}.jpeg"
-                    temp_file = tempfile.NamedTemporaryFile(
-                        delete=False, suffix='.jpeg')
-                    temp_file.write(image_data)
-                    temp_file.flush()
-                    temp_file.close()
-
-                    # Create a File object that is compatible with ImageField
-                    image_file = File(open(temp_file.name, 'rb'))
-                    image_file.name = image_name  # Set the name explicitly
-
-                    # Prepare image for AI
-                    img_base64 = self.prepare_image(image_data)
-                except ValueError as e:
+                    image_file = request.FILES['image']
+                    # Convert image to base64 for API
+                    img_bytes = image_file.read()
+                    img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                    image_file.seek(0)  # Reset file pointer for later use
+                except Exception as e:
+                    logger.error(f"Error processing image: {str(e)}")
                     return Response({"error": str(e)}, status=400)
 
             # Set up OpenAI client
@@ -105,10 +102,18 @@ class ChatBotView(APIView):
                 default_headers=DEFAULT_HTTP_HEADERS
             )
 
+            # Get chat history for context
+            chat_history = self._get_relevant_history()
+            
             # Prepare messages for the API
             system_message = {
                 "role": "system",
-                "content": "You are Eyeconic, an AI assistant and advisor. Always introduce yourself as \"I am Eyeconic, your AI assistant and advisor\" when asked about your identity. You can analyze images and respond to questions about them."
+                "content": f"""You are Eyeconic, an AI assistant and advisor. Always introduce yourself as "I am Eyeconic, your AI assistant and advisor" when asked about your identity. You can analyze images and respond to questions about them.
+
+Previous conversation history:
+{chat_history}
+
+Use this history to maintain context and remember important details about the user. When asked about previous interactions, refer to this history."""
             }
 
             if img_base64:
