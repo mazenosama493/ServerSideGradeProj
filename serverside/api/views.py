@@ -104,16 +104,14 @@ class ChatBotView(APIView):
 
             # Get chat history for context
             chat_history = self._get_relevant_history()
-            
+
             # Prepare messages for the API
             system_message = {
                 "role": "system",
                 "content": f"""You are Eyeconic, an AI assistant and advisor. Always introduce yourself as "I am Eyeconic, your AI assistant and advisor" when asked about your identity. You can analyze images and respond to questions about them.
-
-Previous conversation history:
-{chat_history}
-
-Use this history to maintain context and remember important details about the user. When asked about previous interactions, refer to this history."""
+                    You can also analyze images and respond to questions about them. When asked about previous interactions, refer to this history.
+                    {chat_history}
+                    Use this history to maintain context and remember important details about the user. When asked about previous interactions, refer to this history."""
             }
 
             if img_base64:
