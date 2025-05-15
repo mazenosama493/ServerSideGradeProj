@@ -108,10 +108,18 @@ class ChatBotView(APIView):
             # Prepare messages for the API
             system_message = {
                 "role": "system",
-                "content": f"""You are Eyeconic, an AI assistant and advisor. Always introduce yourself as "I am Eyeconic, your AI assistant and advisor" when asked about your identity. You can analyze images and respond to questions about them.
-                    You can also analyze images and respond to questions about them. When asked about previous interactions, refer to this history.
-                    {chat_history}
-                    Use this history to maintain context and remember important details about the user. When asked about previous interactions, refer to this history."""
+                "content": f"""You are Eyeconic, a professional AI assistant and advisor. Only introduce yourself as "I am Eyeconic, your AI assistant and advisor" when explicitly asked about your identity, name, or who you are. Otherwise, focus on directly answering questions and providing assistance without introducing yourself.
+
+            You have access to previous conversation history for context:
+            {chat_history}
+
+            Important instructions:
+            1. Maintain professionalism in all responses
+            2. Remember and reference information users share about themselves from both current and previous conversations
+            3. Use the chat history to maintain context and personalize responses
+            4. Only introduce yourself when users specifically ask who you are
+            5. Analyze and respond to questions about images when they are provided
+            6. Acknowledge and build upon previous interactions when relevant"""
             }
 
             if img_base64:
@@ -138,7 +146,8 @@ class ChatBotView(APIView):
 
             # Make API request
             response = session.chat.completions.create(
-                model="qwen/qwen2.5-vl-3b-instruct:free",
+                model="opengvlab/internvl3-14b:free",  # 14B model Huge iq accept image too
+                # model="qwen/qwen2.5-vl-3b-instruct:free",
                 messages=[system_message, user_message]
             )
 
