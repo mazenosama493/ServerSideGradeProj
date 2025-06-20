@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 import base64
 from PIL import Image
 import io
-
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -27,13 +28,13 @@ DEFAULT_HTTP_HEADERS = {
     "X-Title": "Eyeconic Chat App",
 }
 
-
 class StreamingChatBotView(APIView):
     parser_classes = (MultiPartParser, JSONParser, FormParser)
+    permission_classes = [IsAuthenticated]  # ✅ ADDED: Ensure user is authenticated to access this view
 
-    def _get_relevant_history(self):
-        """Get last 10 interactions to maintain context."""
-        history = ChatHistory.objects.order_by('-timestamp')[:10]
+    def _get_relevant_history(self, user):  # ✅ ADDED: Accept user to filter chats
+        """Get last 10 user-specific interactions to maintain context."""
+        history = ChatHistory.objects.filter(user=user).order_by('-timestamp')[:10]  # ✅ MODIFIED: Only fetch user's chats
         context = []
         for chat in reversed(history):  # Reverse to get chronological order
             context.append(f"User: {chat.prompt}")
@@ -43,7 +44,6 @@ class StreamingChatBotView(APIView):
     def prepare_image(self, image_data):
         """Convert image data to base64 for AI processing."""
         try:
-            # Convert to RGB format
             image = Image.open(io.BytesIO(image_data)).convert("RGB")
             buffered = io.BytesIO()
             image.save(buffered, format="JPEG", quality=85)
@@ -52,7 +52,7 @@ class StreamingChatBotView(APIView):
             logger.error(f"Error preparing image: {str(e)}")
             raise ValueError(f"Error processing image: {str(e)}")
 
-    def stream_response_generator(self, prompt, image_file=None):
+    def stream_response_generator(self, prompt, image_file=None, user=None):  # ✅ ADDED user param
         """Generator function that yields streaming response chunks."""
         try:
             # Set up OpenAI client for streaming
@@ -67,7 +67,6 @@ class StreamingChatBotView(APIView):
             # Handle image upload if present
             if image_file:
                 try:
-                    # Convert image to base64 for API
                     img_bytes = image_file.read()
                     img_base64 = base64.b64encode(img_bytes).decode('utf-8')
                     image_file.seek(0)  # Reset file pointer for later use
@@ -76,28 +75,25 @@ class StreamingChatBotView(APIView):
                     yield f"data: {json.dumps({'error': f'Error processing image: {str(e)}'})}\n\n"
                     return
 
-            # Get chat history for context
-            chat_history = self._get_relevant_history()
+            # ✅ MODIFIED: Pass user to history method
+            chat_history = self._get_relevant_history(user)
 
-            # Prepare messages for the API
+            # System and user messages
             system_message = {
                 "role": "system",
-                "content": f"""You are Eyeconic, a professional AI assistant and advisor. Only introduce yourself as "I am Eyeconic, your AI assistant and advisor" when explicitly asked about your identity, name, or who you are. Otherwise, focus on directly answering questions and providing assistance without introducing yourself.
+                "content": f"""You are Eyeconic, a professional AI assistant and advisor. Only introduce yourself as "I am Eyeconic, your AI assistant and advisor" when explicitly asked about your identity.
 
-            You have access to previous conversation history for context:
-            {chat_history}
+You have access to previous conversation history for context:
+{chat_history}
 
-            Important instructions:
-            1. Maintain professionalism in all responses
-            2. Remember and reference information users share about themselves from both current and previous conversations
-            3. Use the chat history to maintain context and personalize responses
-            4. Only introduce yourself when users specifically ask who you are
-            5. Analyze and respond to questions about images when they are provided
-            6. Acknowledge and build upon previous interactions when relevant"""
+Important instructions:
+1. Maintain professionalism
+2. Use chat history for context
+3. Do not introduce yourself unless asked
+4. Handle images when provided"""
             }
 
             if img_base64:
-                # Image + text request
                 user_message = {
                     "role": "user",
                     "content": [
@@ -112,34 +108,27 @@ class StreamingChatBotView(APIView):
                     ]
                 }
             else:
-                # Text-only request
                 user_message = {
                     "role": "user",
                     "content": prompt
                 }
 
-            # Send initial connection confirmation
             yield f"data: {json.dumps({'type': 'connection', 'status': 'connected'})}\n\n"
 
-            # Make streaming API request
             response_stream = session.chat.completions.create(
-                model="opengvlab/internvl3-14b:free",  # 14B model with image support
+                model="opengvlab/internvl3-14b:free",
                 messages=[system_message, user_message],
-                stream=True,  # Enable streaming
+                stream=True,
                 temperature=0.7,
                 max_tokens=2048
             )
 
-            # Collect the complete response for saving to history
             complete_response = ""
 
-            # Stream the response chunks
             for chunk in response_stream:
                 if chunk.choices[0].delta.content is not None:
                     content_chunk = chunk.choices[0].delta.content
                     complete_response += content_chunk
-
-                    # Send each chunk to the client
                     chunk_data = {
                         'type': 'content',
                         'content': content_chunk,
@@ -147,19 +136,18 @@ class StreamingChatBotView(APIView):
                     }
                     yield f"data: {json.dumps(chunk_data)}\n\n"
 
-            # Send completion signal
             yield f"data: {json.dumps({'type': 'complete', 'complete': True})}\n\n"
 
-            # Save complete response to chat history
+            # ✅ ADDED user to saved chat
             try:
                 ChatHistory.objects.create(
+                    user=user,  # ✅ associate with the current user
                     prompt=prompt,
                     image=image_file if image_file else None,
                     response=complete_response,
                     source="mobile"
                 )
-                logger.info(
-                    f"Saved streaming chat to history: {len(complete_response)} characters")
+                logger.info(f"Saved streaming chat to history: {len(complete_response)} chars")
             except Exception as e:
                 logger.error(f"Error saving to chat history: {str(e)}")
                 yield f"data: {json.dumps({'type': 'error', 'error': 'Failed to save chat history'})}\n\n"
@@ -176,41 +164,29 @@ class StreamingChatBotView(APIView):
 
             prompt = request.data.get('prompt', '')
             if not prompt:
-                logger.error("No prompt provided")
                 return Response({"error": "No prompt provided"}, status=400)
 
-            logger.info(f"Processing prompt: {prompt}")
-            image_file = None
+            image_file = request.FILES.get('image', None)
 
-            # Handle image upload if present
-            if 'image' in request.FILES:
-                image_file = request.FILES['image']
-                # Create streaming response
-                logger.info(f"Image file received: {image_file.name}")
-            logger.info("Creating streaming response...")
+            # ✅ Pass request.user to generator
             response = StreamingHttpResponse(
-                self.stream_response_generator(prompt, image_file),
+                self.stream_response_generator(prompt, image_file, request.user),  # ✅ user passed here
                 content_type='text/event-stream'
             )
 
-            # Set CORS and SSE headers (removed Connection header as it's hop-by-hop)
+            # Headers for SSE
             response['Access-Control-Allow-Origin'] = '*'
             response['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
             response['Access-Control-Allow-Headers'] = 'Content-Type'
             response['Cache-Control'] = 'no-cache'
-            # Disable nginx buffering for streaming
             response['X-Accel-Buffering'] = 'no'
 
-            logger.info("Streaming response created successfully")
             return response
 
         except Exception as e:
             logger.error(f"Error in StreamingChatBotView: {str(e)}")
             logger.exception("Full exception details:")
-            return Response(
-                {"error": f"Server error: {str(e)}"},
-                status=500
-            )
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
 
     def options(self, request):
         """Handle preflight CORS requests."""

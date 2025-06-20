@@ -3,7 +3,7 @@ from pathlib import Path
 import os
 import dotenv
 from dotenv import load_dotenv
-
+from datetime import timedelta
 # Load environment variables
 load_dotenv()
 
@@ -27,7 +27,7 @@ ALLOWED_HOSTS = ['*']
 # API Keys - should be moved to .env in production
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Replace with your actual OpenRouter API key
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "sk-or-v1-...")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
 
 
 # Application definition
@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'api',
     'corsheaders',
+    'users',
+    'rest_framework_simplejwt.token_blacklist',
 ]
 
 MIDDLEWARE = [
@@ -192,4 +194,20 @@ LOGGING = {
             'propagate': False,
         },
     },
+}
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}
+
+
+SIMPLE_JWT = {
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
