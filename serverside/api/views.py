@@ -16,6 +16,13 @@ from django.conf import settings
 from dotenv import load_dotenv
 from django.core.files import File
 import tempfile
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
+from rest_framework import status
+from openai import OpenAI
+from django.core.files import File
+import tempfile
+import whisper
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +41,7 @@ DEFAULT_HTTP_HEADERS = {
     "X-Title": "Eyeconic Chat App",
 }
 
-
+@permission_classes([IsAuthenticated])
 class ChatBotView(APIView):
     parser_classes = (MultiPartParser, JSONParser, FormParser)
 
@@ -100,6 +107,7 @@ class ChatBotView(APIView):
                 default_headers=DEFAULT_HTTP_HEADERS
             )
 
+
             # Get chat history for context
             chat_history = self._get_relevant_history()
 
@@ -151,8 +159,10 @@ class ChatBotView(APIView):
 
             result_text = response.choices[0].message.content
 
+
             # Save to chat history
             ChatHistory.objects.create(
+                user=request.user,
                 prompt=prompt,
                 image=image_file if image_file else None,
                 response=result_text,
@@ -168,11 +178,11 @@ class ChatBotView(APIView):
                 status=500
             )
 
-
+@permission_classes([IsAuthenticated])
 class ChatHistoryView(APIView):
     def get(self, request):
         try:
-            chats = ChatHistory.objects.all().order_by("-timestamp")
+            chats = ChatHistory.objects.filter(user=request.user).order_by('-timestamp')
             serializer = ChatHistorySerializer(chats, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -181,3 +191,43 @@ class ChatHistoryView(APIView):
                 {"error": f"Server error: {str(e)}"},
                 status=500
             )
+
+
+class DeleteChatView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, chat_id):
+        try:
+            chat = ChatHistory.objects.get(id=chat_id, user=request.user)
+            chat.delete()
+            return Response({"message": "Chat deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except ChatHistory.DoesNotExist:
+            return Response({"error": "Chat not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
+        
+
+
+@permission_classes([IsAuthenticated])
+class TranscribeAudioView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, format=None):
+        audio_file = request.FILES.get("audio")
+        if not audio_file:
+            return Response({"error": "No audio file provided."}, status=400)
+
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            for chunk in audio_file.chunks():
+                tmp.write(chunk)
+            temp_path = tmp.name
+
+        try:
+            model = whisper.load_model("small", device="cuda")
+            result = model.transcribe(temp_path)
+            transcription = result["text"]
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+        finally:
+            os.remove(temp_path)
+
+        return Response({"transcription": transcription})
