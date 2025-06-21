@@ -1,5 +1,4 @@
 # views.py
-import google.generativeai as genai
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
@@ -24,7 +23,6 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Configure API keys
-gemini_api_key = settings.GEMINI_API_KEY
 openrouter_api_key = settings.OPENROUTER_API_KEY
 
 # Configure OpenRouter client
