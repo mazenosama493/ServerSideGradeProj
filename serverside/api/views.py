@@ -21,6 +21,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import permission_classes
 from rest_framework import status
 from openai import OpenAI
+from django.core.files import File
+import tempfile
+import whisper
 
 logger = logging.getLogger(__name__)
 
@@ -202,3 +205,31 @@ class DeleteChatView(APIView):
             return Response({"message": "Chat deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
         except ChatHistory.DoesNotExist:
             return Response({"error": "Chat not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
+        
+
+
+@permission_classes([IsAuthenticated])
+class TranscribeAudioView(APIView):
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, format=None):
+        audio_file = request.FILES.get("audio")
+        if not audio_file:
+            return Response({"error": "No audio file provided."}, status=400)
+
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            for chunk in audio_file.chunks():
+                tmp.write(chunk)
+            temp_path = tmp.name
+
+        try:
+            model = whisper.load_model("small", device="cuda")
+            result = model.transcribe(temp_path)
+            transcription = result["text"]
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+        finally:
+            os.remove(temp_path)
+
+        return Response({"transcription": transcription})
