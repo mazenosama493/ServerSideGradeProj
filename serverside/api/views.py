@@ -1,4 +1,5 @@
 # views.py
+import google.generativeai as genai
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser, FormParser
@@ -6,12 +7,20 @@ from .models import ChatHistory
 from .serializers import ChatHistorySerializer
 from PIL import Image
 import io
+import json
 import os
+import uuid
 import base64
 import openai
 import logging
 from django.conf import settings
 from dotenv import load_dotenv
+from django.core.files import File
+import tempfile
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
+from rest_framework import status
+from openai import OpenAI
 from django.core.files import File
 import tempfile
 import whisper
@@ -22,6 +31,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Configure API keys
+gemini_api_key = settings.GEMINI_API_KEY
 openrouter_api_key = settings.OPENROUTER_API_KEY
 
 # Configure OpenRouter client
@@ -33,7 +43,7 @@ DEFAULT_HTTP_HEADERS = {
     "X-Title": "Eyeconic Chat App",
 }
 
-
+@permission_classes([IsAuthenticated])
 class ChatBotView(APIView):
     parser_classes = (MultiPartParser, JSONParser, FormParser)
 
@@ -46,11 +56,12 @@ class ChatBotView(APIView):
                     try:
                         os.remove(os.path.join(temp_dir, filename))
                     except:
-                        pass  
+                        pass  # Ignore errors on cleanup
         except:
-            pass  
+            pass  # We don't want cleanup to cause issues
 
     def _get_relevant_history(self):
+        # Get last 10 interactions to maintain context
         history = ChatHistory.objects.order_by('-timestamp')[:10]
         context = []
         for chat in reversed(history):  # Reverse to get chronological order
@@ -98,6 +109,7 @@ class ChatBotView(APIView):
                 default_headers=DEFAULT_HTTP_HEADERS
             )
 
+
             # Get chat history for context
             chat_history = self._get_relevant_history()
 
@@ -119,6 +131,7 @@ class ChatBotView(APIView):
             }
 
             if img_base64:
+                # Image + text request
                 user_message = {
                     "role": "user",
                     "content": [
@@ -133,6 +146,7 @@ class ChatBotView(APIView):
                     ]
                 }
             else:
+                # Text-only request
                 user_message = {
                     "role": "user",
                     "content": prompt
@@ -147,12 +161,14 @@ class ChatBotView(APIView):
 
             result_text = response.choices[0].message.content
 
+
             # Save to chat history
             ChatHistory.objects.create(
+                user=request.user,
                 prompt=prompt,
                 image=image_file if image_file else None,
                 response=result_text,
-                source="mobile"
+                source="mobile"  # Since we're focusing on mobile-first approach
             )
 
             return Response({"response": result_text})
@@ -164,11 +180,11 @@ class ChatBotView(APIView):
                 status=500
             )
 
-
+@permission_classes([IsAuthenticated])
 class ChatHistoryView(APIView):
     def get(self, request):
         try:
-            chats = ChatHistory.objects.all().order_by("-timestamp")
+            chats = ChatHistory.objects.filter(user=request.user).order_by('-timestamp')
             serializer = ChatHistorySerializer(chats, many=True)
             return Response(serializer.data)
         except Exception as e:
@@ -177,7 +193,22 @@ class ChatHistoryView(APIView):
                 {"error": f"Server error: {str(e)}"},
                 status=500
             )
+
+
+class DeleteChatView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, chat_id):
+        try:
+            chat = ChatHistory.objects.get(id=chat_id, user=request.user)
+            chat.delete()
+            return Response({"message": "Chat deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+        except ChatHistory.DoesNotExist:
+            return Response({"error": "Chat not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
         
+
+
+@permission_classes([IsAuthenticated])
 class TranscribeAudioView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
@@ -194,7 +225,7 @@ class TranscribeAudioView(APIView):
 
         try:
             model = whisper.load_model("small", device="cuda")
-            result = model.transcribe(temp_path)
+            result = model.transcribe(temp_path,task="transcribe")
             transcription = result["text"]
         except Exception as e:
             return Response({"error": str(e)}, status=500)
