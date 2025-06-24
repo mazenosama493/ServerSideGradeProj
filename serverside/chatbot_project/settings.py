@@ -16,7 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9ex*e#l9*%p&+9wn=(ekcbal$a9gu$*qbjksjj=^tbu@m*zih#'
+SECRET_KEY = os.getenv("DJ_SECRET", "django-insecure-...")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -26,7 +26,7 @@ ALLOWED_HOSTS = ['*']
 
 # API Keys - should be moved to .env in production
 # Replace with your actual OpenRouter API key
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "sk-or-v1-...")
 
 
 # Application definition
