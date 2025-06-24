@@ -24,10 +24,8 @@ DEBUG = True
 # Allow all hosts during development
 ALLOWED_HOSTS = ['*']
 
-# API Keys - should be moved to .env in production
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Replace with your actual OpenRouter API key
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "sk-or-v1-...")
 
 
 # Application definition
