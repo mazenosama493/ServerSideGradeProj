@@ -75,7 +75,6 @@ class ChatBotView(APIView):
             image.save(buffered, format="JPEG", quality=85)
             return base64.b64encode(buffered.getvalue()).decode("utf-8")
         except Exception as e:
-            logger.error(f"Error preparing image: {str(e)}")
             raise ValueError(f"Error processing image: {str(e)}")
 
     def post(self, request):
@@ -96,7 +95,6 @@ class ChatBotView(APIView):
                     img_base64 = base64.b64encode(img_bytes).decode('utf-8')
                     image_file.seek(0)  # Reset file pointer for later use
                 except Exception as e:
-                    logger.error(f"Error processing image: {str(e)}")
                     return Response({"error": str(e)}, status=400)
 
             # Set up OpenAI client
@@ -171,7 +169,6 @@ class ChatBotView(APIView):
             return Response({"response": result_text})
 
         except Exception as e:
-            logger.error(f"Error in ChatBotView: {str(e)}")
             return Response(
                 {"error": f"Server error: {str(e)}"},
                 status=500
@@ -185,7 +182,6 @@ class ChatHistoryView(APIView):
             serializer = ChatHistorySerializer(chats, many=True)
             return Response(serializer.data)
         except Exception as e:
-            logger.error(f"Error in ChatHistoryView: {str(e)}")
             return Response(
                 {"error": f"Server error: {str(e)}"},
                 status=500
