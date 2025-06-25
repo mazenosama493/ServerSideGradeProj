@@ -207,8 +207,10 @@ class DeleteChatView(APIView):
         
 
 
-@permission_classes([IsAuthenticated])
+model = whisper.load_model("medium", device="cuda")
+
 class TranscribeAudioView(APIView):
+    permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, format=None):
@@ -216,15 +218,13 @@ class TranscribeAudioView(APIView):
         if not audio_file:
             return Response({"error": "No audio file provided."}, status=400)
 
-        # Save to temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             for chunk in audio_file.chunks():
                 tmp.write(chunk)
             temp_path = tmp.name
 
         try:
-            model = whisper.load_model("small", device="cuda")
-            result = model.transcribe(temp_path,task="transcribe")
+            result = model.transcribe(temp_path, task="transcribe")
             transcription = result["text"]
         except Exception as e:
             return Response({"error": str(e)}, status=500)
