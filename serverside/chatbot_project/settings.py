@@ -49,6 +49,8 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     # CORS middleware - add this before CommonMiddleware
     'corsheaders.middleware.CorsMiddleware',
+    'api.middleware.access_log.AccessLogMiddleware',
+
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -165,30 +167,31 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
+        'access_format': {
+            'format': '%(asctime)s %(remote_addr)s %(request_method)s %(path_info)s %(status_code)s',
+        },
         'verbose': {
             'format': '{levelname} {asctime} {module} {message}',
             'style': '{',
         },
     },
     'handlers': {
+        'file_access': {
+            'level': 'INFO',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs/access.log'),
+            'formatter': 'access_format',
+        },
         'console': {
+            'level': 'DEBUG',
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
     },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
-    },
     'loggers': {
-        'django': {
-            'handlers': ['console'],
+        'django.request': {
+            'handlers': ['file_access', 'console'],  # Now logs to BOTH file and console
             'level': 'INFO',
-            'propagate': False,
-        },
-        'api': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
             'propagate': False,
         },
     },
