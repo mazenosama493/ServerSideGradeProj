@@ -149,9 +149,10 @@ class ChatBotView(APIView):
 
             # Make API request
             response = session.chat.completions.create(
-                model="opengvlab/internvl3-14b:free",  # 14B model Huge iq accept image too
+                model="opengvlab/internvl3-14b",
                 # model="qwen/qwen2.5-vl-3b-instruct:free",
-                messages=[system_message, user_message]
+                messages=[system_message, user_message],
+                max_tokens=2000,
             )
 
             result_text = response.choices[0].message.content
@@ -201,7 +202,8 @@ class DeleteChatView(APIView):
         
 
 
-model = whisper.load_model("medium", device="cuda")
+model = whisper.load_model("large-v3", device="cuda")
+
 
 class TranscribeAudioView(APIView):
     permission_classes = [IsAuthenticated]

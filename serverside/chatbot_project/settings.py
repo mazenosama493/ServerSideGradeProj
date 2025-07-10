@@ -168,7 +168,7 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'access_format': {
-            'format': '%(asctime)s %(remote_addr)s %(request_method)s %(path_info)s %(status_code)s',
+            'format': '%(asctime)s %(levelname)s %(message)s',
         },
         'verbose': {
             'format': '{levelname} {asctime} {module} {message}',
@@ -190,12 +190,13 @@ LOGGING = {
     },
     'loggers': {
         'django.request': {
-            'handlers': ['file_access', 'console'],  # Now logs to BOTH file and console
+            'handlers': ['file_access', 'console'],
             'level': 'INFO',
             'propagate': False,
         },
     },
 }
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -210,5 +211,4 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
 }
